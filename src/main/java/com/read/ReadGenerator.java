@@ -37,7 +37,7 @@ public class ReadGenerator {
 		PrintWriter writer = new PrintWriter(exceptionFile);
 
 		// read the csv file
-		Path csvPath = Paths.get("C:\\Users\\Napster\\Documents\\Read generator files\\read_for_next_month.csv");
+		Path csvPath = Paths.get("C:\\Users\\Napster\\Documents\\Read generator files\\bdt1_feb_2020.csv");
 		Scanner scanner = new Scanner(csvPath);
 
 		int currRowIndex = 1;
@@ -53,14 +53,15 @@ public class ReadGenerator {
 			System.out.println(Arrays.toString(readTokens));
 			final HashMap<String, String> readMap = prepareMapFromTokens(readTokens);
 
-			String[] readRow = null;
+			Object[] readRow = null;
 			try {
 				readRow = prepareReadRow(readMap);
 			} catch (Exception ex) {
 				writer.println("Exception number: " + ++exceptionCount);
 				writer.println("-----------------------------------------------");
 				writer.println("Consumer Number: " + readMap.get("consumerNo"));
-				writer.println("Error: " + ex.getMessage() + "\n");
+				writer.println("Error: ");
+				ex.printStackTrace(writer);
 				continue;
 			}
 
@@ -122,8 +123,8 @@ public class ReadGenerator {
 		return newReading.toString();
 	}
 
-	private static String[] prepareReadRow(HashMap<String, String> readMap) throws Exception {
-		String readRow[] = new String[15];
+	private static Object[] prepareReadRow(HashMap<String, String> readMap) throws Exception {
+		Object readRow[] = new Object[15];
 
 		readRow[0] = readMap.get("consumerNo"); // consumer number
 		readRow[1] = getNewReadDate(readMap.get("readDate")); // read date
@@ -141,9 +142,9 @@ public class ReadGenerator {
 		readRow[2] = newReadType;
 
 		// reading
-		readRow[3] = getReading(readMap.get("reading"), readType, readMap.get("totalConsumption"));
+		readRow[3] = Double.parseDouble(getReading(readMap.get("reading"), readType, readMap.get("totalConsumption")));
 		// meter_md
-		readRow[4] = readMap.get("meterMd");
+		readRow[4] = Double.parseDouble(readMap.get("meterMd"));
 		// kva reading
 		readRow[5] = "0";
 		// kvah reading
@@ -151,11 +152,11 @@ public class ReadGenerator {
 		// lf reading
 		readRow[7] = "0";
 		// meter pf
-		readRow[8] = readMap.get("meterPf");
+		readRow[8] = Double.parseDouble(readMap.get("meterPf"));
 		// meter reader name
 		readRow[9] = "PMR_MANUAL";
 		// assessment
-		readRow[10] = readMap.get("assessment");
+		readRow[10] = Double.parseDouble(readMap.get("assessment"));
 		// division
 		readRow[11] = "";
 		// group no
@@ -168,12 +169,15 @@ public class ReadGenerator {
 		return readRow;
 	}
 
-	private static void addReadEntry(XSSFSheet sheet, String[] readTokens, int rowIndex) {
+	private static void addReadEntry(XSSFSheet sheet, Object[] readTokens, int rowIndex) {
 		int colIndex = 0;
 		Row row = sheet.createRow(rowIndex);
-		for (String val : readTokens) {
+		for (Object val : readTokens) {
 			Cell cell = row.createCell(colIndex++);
-			cell.setCellValue(val);
+			if(val instanceof String)
+				cell.setCellValue((String)val);
+			else if(val instanceof Double)
+				cell.setCellValue((Double)val);
 		}
 	}
 
