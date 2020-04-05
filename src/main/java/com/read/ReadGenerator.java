@@ -10,6 +10,7 @@ import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Scanner;
 
 import org.apache.commons.lang.StringUtils;
@@ -22,6 +23,7 @@ import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.cfg.Configuration;
 import org.hibernate.engine.jdbc.env.internal.JdbcEnvironmentInitiator.ConnectionProviderJdbcConnectionAccess;
+import org.hibernate.query.Query;
 import org.hibernate.service.spi.ServiceException;
 import org.postgresql.util.PSQLException;
 
@@ -51,14 +53,18 @@ public class ReadGenerator {
 			System.out.println("Couldn't connect to the database! Please check the config parameters");
 			System.exit(0);
 		}
+		System.out.println("Successfully connected to the Database !!");
 		
 		//Open session
 		final Session session = sessionFactory.openSession();
-		System.out.println("Successfully connected to the Database !!");
+
+		//Fetch required reading realated information for <CURRENT_MONTH>
+		List<Object[]> result = fetchReadInformation("", session);
+		for(Object[] arr: result) {
+			System.out.println(Arrays.toString(arr));
+		}
 		
 		System.exit(0);
-		
-		
 		// initialize excel workbook
 		XSSFWorkbook workbook = new XSSFWorkbook();
 		XSSFSheet sheet = workbook.createSheet("data");
@@ -127,6 +133,34 @@ public class ReadGenerator {
 				.concat(ConnectionConfig.DATABASE_NAME);						
 				
 		return connectionUrl;
+	}
+	
+	//Fetch read information for a bill month
+	private static List<Object[]> fetchReadInformation(String billMonth, Session session) {
+		
+		String queryString = "select rm.consumerNo, rm.billMonth, rm.readingDate, rm.readingType, rm.reading"
+				+ ", rmk.meterMD, rmp.meterPF, rm.assessment, (rm.totalConsumption/rm.mf) as totalConsumption"
+				+ ", rm.groupNo, rm.readingDiaryNo"
+				+ "from ReadMaster rm"
+				+ "left join ReadMasterKW rmk on rm.id = rmk.readMasterId"
+				+ "left join ReadMasterPF rmp on rm.id = rmp.readMasterId"
+				+ "where rm.billMonth = 'FEB-2020' and rm.usedOnBill=true and rm.replacementFlag='NR'"
+				+ "and rm.groupNo in ('GJK3')";
+		
+		Query<Object[]> query = session.createQuery(queryString, Object[].class);
+		List<Object[]> result = query.getResultList();
+		return result;
+		
+//		String s = SELECT RM.CONSUMER_NO,RM.BILL_MONTH,RM.READING_DATE,RM.READING_TYPE,
+//		RM.READING, RMK.METER_MD, RMP.METER_PF,RM.ASSESSMENT,(RM.total_consumption/RM.MF) as total_consumption,
+//		RM.GROUP_NO,RM.READING_DIARY_NO
+//		 FROM NGB.READ_MASTER RM
+//		 LEFT JOIN NGB.READ_MASTER_KW RMK ON RM.ID=RMK.READ_MASTER_ID
+//		 LEFT JOIN NGB.READ_MASTER_PF RMP ON RM.ID=RMP.READ_MASTER_ID
+//		 WHERE RM.BILL_MONTH='FEB-2020'  and RM.used_on_bill=TRUE and RM.replacement_flag='NR'
+//		 and RM.group_no in (select group_no from ngb.groups where location_code='3614807'
+//		 --and group_no in ('GJK3','GJK4','GJK5','GJK6','GJK7','GJK8','GJK9','GJK95')
+//		 and is_deleted=FALSE);"
 	}
 
 	private static HashMap<String, String> prepareMapFromTokens(String[] readTokens) {

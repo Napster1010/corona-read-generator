@@ -26,7 +26,9 @@
         <property name="hbm2ddl.auto">update</property>
 
         <!-- Names the annotated entity class -->
-        <!-- <mapping class="com.ccnb.bean.ConsumerFeederMapping"/> -->      
+        <mapping class="com.bean.ReadMaster"/>      
+        <mapping class="com.bean.ReadMasterKW"/>      
+        <mapping class="com.bean.ReadMasterPF"/>      
 		    
 	</session-factory>
 

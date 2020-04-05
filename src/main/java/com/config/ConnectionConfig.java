@@ -20,4 +20,9 @@ public class ConnectionConfig {
 	//Schema name 
 	public static final String DEFAULT_SCHEMA = "ngb";
 		
+	//Current month (strictly in format MMM-yyyy)
+	public static final String CURRENT_MONTH = "FEB-2020";
+	
+	//Previous month (strictly in format MMM-yyyy) 
+	public static final String PREVIOUS_MONTH = "JAN-2020";
 }
