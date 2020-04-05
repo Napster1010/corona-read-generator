@@ -77,7 +77,7 @@ public class ReadGenerator {
 		addColumnHeaders(sheet, columnHeaders);
 
 		// Exception log file
-		File exceptionFile = new File("C:\\Users\\Napster\\Documents\\Read generator files\\CoronaReadGenerator.txt");
+		File exceptionFile = new File(CoronaConfig.EXCEPTION_FILE_PATH);
 		PrintWriter writer = new PrintWriter(exceptionFile);
 
 		int currRowIndex = 1;
@@ -115,7 +115,7 @@ public class ReadGenerator {
 
 		// write the workbook to a file
 		FileOutputStream outputStream = new FileOutputStream(
-				new File("C:\\Users\\Napster\\Documents\\Read generator files\\Test_Output.xlsx"));
+				new File(CoronaConfig.OUTPUT_PMR_FILE_PATH));
 		workbook.write(outputStream);
 		System.out.println("\n\nExcel created Successfully!!");
 		System.out.println("Number of rows found in the input file: " + rowCount);
