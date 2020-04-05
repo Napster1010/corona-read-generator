@@ -4,10 +4,12 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.PrintWriter;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.text.DecimalFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -24,13 +26,17 @@ import org.hibernate.SessionFactory;
 import org.hibernate.cfg.Configuration;
 import org.hibernate.query.Query;
 import org.hibernate.service.spi.ServiceException;
+import org.joda.time.Days;
+import org.joda.time.LocalDate;
 
 import com.config.CoronaConfig;
 
 public class ReadGenerator {
 	private static final String basePostgresUrl = "jdbc:postgresql://";
-	private static final SimpleDateFormat csvDateFormat = new SimpleDateFormat("yyyy-MM-dd");
+	private static final SimpleDateFormat billMonthFormat = new SimpleDateFormat("MMM-yyyy");
+	private static final SimpleDateFormat dbDateFormat = new SimpleDateFormat("yyyy-MM-dd");
 	private static final SimpleDateFormat excelDateFormat = new SimpleDateFormat("dd-MM-yyyy");
+	private static final String lockdownDate = "2020-03-22";
 
 	public static void main(String[] args) throws Exception{
 		
@@ -80,7 +86,6 @@ public class ReadGenerator {
 		int rowCount = 0, exceptionCount = 0;
 		for(String[] readTokens: currentReads) {
 			++rowCount;
-			System.out.println(readTokens);
 			System.out.println(Arrays.toString(readTokens));
 			final HashMap<String, String> readMap = prepareMapFromTokens(readTokens);
 
@@ -91,7 +96,9 @@ public class ReadGenerator {
 				if(tariffCategory==null)
 					throw new Exception("Couldn't retrieve tariff category for the consumer!");
 				System.out.println(tariffCategory);
-				readRow = prepareReadRow(readMap);
+				
+				//prepare the new read row
+				readRow = prepareReadRow(readMap, tariffCategory, session);
 			} catch (Exception ex) {
 				writer.println("Exception number: " + ++exceptionCount);
 				writer.println("-----------------------------------------------");
@@ -197,29 +204,134 @@ public class ReadGenerator {
 
 	// add one month to read date
 	private static String getNewReadDate(String readDate) throws Exception {
-		Date parsedReadDate = csvDateFormat.parse(readDate);
+		Date parsedReadDate = dbDateFormat.parse(readDate);
 		Date newReadDate = DateUtils.addMonths(parsedReadDate, 1);
 
 		return excelDateFormat.format(newReadDate);
 	}
 
-	// get reading
-	private static String getReading(String oldReading, String readType, String totalConsumption) throws Exception {
+	// get reading and assessment
+	private static Object[] getReadingAndAssessment(String oldReading, String readType,
+			String totalConsumption, String tariffCategory, String consumerNo, String oldAssessment,
+			Session session, Date currentReadingDate) throws Exception {
+		
 		BigDecimal newReading = null;
-		BigDecimal reading = new BigDecimal(oldReading);
-		BigDecimal consumption = new BigDecimal(totalConsumption);
-		if ("NORMAL".equals(readType)) {
-			newReading = reading.add(consumption);
-		} else if ("ASSESSMENT".equals(readType)) {
-			newReading = reading;
-		} else if ("PFL".equals(readType)) {
-			newReading = reading.add(new BigDecimal("190"));
+		BigDecimal newAssessment = null;
+		boolean prorateValues = false;
+		
+		//check if there's a need to prorate reading, assessment for IP
+		if(tariffCategory.equals("LV2") || tariffCategory.equals("LV4")) {
+			Date newReadingDate = excelDateFormat.parse(getNewReadDate(dbDateFormat.format(currentReadingDate)));
+			if(dbDateFormat.parse(lockdownDate).compareTo(newReadingDate) > 0)
+				prorateValues = true;
 		}
+		
+		if(tariffCategory.equals("LV1") || tariffCategory.equals("LV3") || tariffCategory.equals("LV5") || !prorateValues) {
+			BigDecimal reading = new BigDecimal(oldReading);
+			BigDecimal consumption = new BigDecimal(totalConsumption);
+			if ("NORMAL".equals(readType)) {
+				newReading = reading.add(consumption);
+				newAssessment = BigDecimal.ZERO;
+			} else if ("ASSESSMENT".equals(readType)) {
+				newReading = reading;
+				newAssessment = new BigDecimal(oldAssessment);
+			} else if ("PFL".equals(readType)) {
+				newReading = reading.add(new BigDecimal("190"));
+				newAssessment = BigDecimal.ZERO;
+			}			
+		}else {
+			//Retrieve the previous bill month
+			String prevBillMonth = getPreviousBillMonth(CoronaConfig.CURRENT_BILL_MONTH);
+			System.out.println("Previous billMonth: " + prevBillMonth);
+			
+			//Retrieve the previous reading date
+			Date prevReadingDate = getPreviousReadingDate(session, consumerNo, prevBillMonth);
+			System.out.println("Previous readingDate: " + prevReadingDate);
+			
+			//by default the duration should be 30 days
+			int noOfDays = 30;
+			
+			if(prevReadingDate!=null) {
+				noOfDays = differenceInDays(prevReadingDate, currentReadingDate);
+			}
+			System.out.println("Number of days: " + noOfDays);
 
-		return newReading.toString();
+			//handle according to read type
+			if ("NORMAL".equals(readType)) {
+				newReading = calculateNewReading(oldReading, totalConsumption, noOfDays, currentReadingDate);
+				newAssessment = BigDecimal.ZERO;
+			} else if ("ASSESSMENT".equals(readType)) {
+				newReading = new BigDecimal(oldReading);
+				newAssessment = calculateNewAssessment(oldAssessment, noOfDays, currentReadingDate);
+			}									
+		}		
+
+		return new Object[] {newReading.toString(), Double.parseDouble(newAssessment.toString())};
+	}
+	
+	//get difference between days
+	private static int differenceInDays(Date d1, Date d2) {
+		return Days.daysBetween(new LocalDate(d1.getTime()), 
+				new LocalDate(d2.getTime())).getDays();		
+	}
+	
+	//get previous bill month in format MMM-yyyy
+	private static String getPreviousBillMonth(String billMonth) throws Exception {
+		Date billMonthDate = billMonthFormat.parse(billMonth);
+		Calendar calendar = Calendar.getInstance();
+		calendar.setTime(billMonthDate);
+		calendar.add(Calendar.MONTH, -1);
+		String previousBillMonth = billMonthFormat.format(calendar.getTime()).toUpperCase();
+		return previousBillMonth;
+	}
+		
+	//calculates new reading
+	private static BigDecimal calculateNewReading(String oldReading, String totalConsumption, int noOfDays,
+			Date currentReadingDate) throws Exception {
+		BigDecimal reading = new BigDecimal(oldReading);
+		BigDecimal consumption = new BigDecimal(totalConsumption);		
+		//calculate per day consumption
+		BigDecimal perDayConsumption = consumption.divide(new BigDecimal(noOfDays), 4, RoundingMode.HALF_UP);
+		//calculate active days
+		int activeDays = differenceInDays(currentReadingDate, dbDateFormat.parse(lockdownDate));
+		//calculate new consumption
+		BigDecimal newConsumption = perDayConsumption.multiply(new BigDecimal(activeDays)).setScale(4, RoundingMode.HALF_UP);
+		
+		//add the consumption to reading
+		BigDecimal newReading = reading.add(newConsumption);
+		return newReading;
+	}
+	
+	//calculates new assessment	
+	private static BigDecimal calculateNewAssessment(String oldAssessment, int noOfDays, 
+			Date currentReadingDate) throws Exception {
+		BigDecimal assessment = new BigDecimal(oldAssessment);
+		//calculate per day assessment
+		BigDecimal perDayAssessment = assessment.divide(new BigDecimal(noOfDays), 4, RoundingMode.HALF_UP);
+		//calculate active days
+		int activeDays = differenceInDays(currentReadingDate, dbDateFormat.parse(lockdownDate));
+		//calculate new assessment
+		BigDecimal newAssessment = perDayAssessment.multiply(new BigDecimal(activeDays));
+		return newAssessment;
+	}
+	
+	//get previous reading date. return null if not found
+	private static Date getPreviousReadingDate(Session session, String consumerNo, 
+			String prevBillMonth) throws Exception {
+		
+		String queryString = "select readingDate from ReadMaster where billMonth = :billMonth"
+				+ " and consumerNo = :consumerNo and usedOnBill=true and replacementFlag='NR'";
+		Query<Date> query = session.createQuery(queryString, Date.class);
+		query.setParameter("billMonth", prevBillMonth);
+		query.setParameter("consumerNo", consumerNo);
+		Date previousReadingDate = query.uniqueResult();		
+		
+		return previousReadingDate;
 	}
 
-	private static Object[] prepareReadRow(HashMap<String, String> readMap) throws Exception {
+	//Prepare the new read for the consumer
+	private static Object[] prepareReadRow(HashMap<String, String> readMap, String tariffCategory, 
+			Session session) throws Exception {
 		Object readRow[] = new Object[15];
 
 		readRow[0] = readMap.get("consumerNo"); // consumer number
@@ -236,9 +348,13 @@ public class ReadGenerator {
 			throw new Exception("Invalid Read Type!");
 
 		readRow[2] = newReadType;
+		
+		Object[] readingAndAssessment = getReadingAndAssessment(readMap.get("reading"), readType, 
+				readMap.get("totalConsumption"), tariffCategory, readMap.get("consumerNo"), readMap.get("assessment"),
+				session, dbDateFormat.parse(readMap.get("readDate"))); 
 
 		// reading
-		readRow[3] = Double.parseDouble(getReading(readMap.get("reading"), readType, readMap.get("totalConsumption")));
+		readRow[3] = readingAndAssessment[0];
 		// meter_md
 		readRow[4] = formatDouble(Double.parseDouble(readMap.get("meterMd")));
 		// kva reading
@@ -252,7 +368,7 @@ public class ReadGenerator {
 		// meter reader name
 		readRow[9] = "PMR_MANUAL";
 		// assessment
-		readRow[10] = formatDouble(Double.parseDouble(readMap.get("assessment")));
+		readRow[10] = formatDouble((Double)readingAndAssessment[1]);
 		// division
 		readRow[11] = "";
 		// group no

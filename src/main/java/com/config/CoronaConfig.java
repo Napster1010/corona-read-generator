@@ -21,8 +21,6 @@ public class CoronaConfig {
 
 	//Current month (strictly in format MMM-yyyy)
 	public static final String CURRENT_BILL_MONTH = "FEB-2020";	
-	//Previous month (strictly in format MMM-yyyy) 
-	public static final String PREVIOUS_BILL_MONTH = "JAN-2020";	
 	//List of groups (Should be comma delimited. ex: GJK3,GJK4,GJK5)
 	public static final String GROUP_NOS = "GJK3,GJK4";
 	//Name of the exception log file (Do not forget using double back slash(\\) in the path string)
