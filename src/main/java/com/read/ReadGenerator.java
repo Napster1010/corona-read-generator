@@ -18,12 +18,47 @@ import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.hibernate.Session;
+import org.hibernate.SessionFactory;
+import org.hibernate.cfg.Configuration;
+import org.hibernate.engine.jdbc.env.internal.JdbcEnvironmentInitiator.ConnectionProviderJdbcConnectionAccess;
+import org.hibernate.service.spi.ServiceException;
+import org.postgresql.util.PSQLException;
+
+import com.config.ConnectionConfig;
 
 public class ReadGenerator {
+	private static final String basePostgresUrl = "jdbc:postgresql://";
 	private static final SimpleDateFormat csvDateFormat = new SimpleDateFormat("yyyy-MM-dd");
 	private static final SimpleDateFormat excelDateFormat = new SimpleDateFormat("dd-MM-yyyy");
 
 	public static void main(String[] args) throws Exception{
+		
+		//Configurations for connection
+		final Configuration configuration = new Configuration();
+		final String connectionUrl = buildConnectionUrl();						
+		configuration.setProperty("hibernate.connection.url", connectionUrl);
+		configuration.setProperty("hibernate.connection.username", ConnectionConfig.USERNAME);
+		configuration.setProperty("hibernate.connection.password", ConnectionConfig.PASSWORD);
+		configuration.setProperty("hibernate.default_schema", ConnectionConfig.DEFAULT_SCHEMA);
+		
+		System.out.println("Trying to establish a connection with the database...");
+		//Connect to the DB
+		SessionFactory sessionFactory = null;
+		try {
+			sessionFactory = configuration.configure().buildSessionFactory();			
+		}catch(ServiceException ex) {
+			System.out.println("Couldn't connect to the database! Please check the config parameters");
+			System.exit(0);
+		}
+		
+		//Open session
+		final Session session = sessionFactory.openSession();
+		System.out.println("Successfully connected to the Database !!");
+		
+		System.exit(0);
+		
+		
 		// initialize excel workbook
 		XSSFWorkbook workbook = new XSSFWorkbook();
 		XSSFSheet sheet = workbook.createSheet("data");
@@ -37,7 +72,7 @@ public class ReadGenerator {
 		PrintWriter writer = new PrintWriter(exceptionFile);
 
 		// read the csv file
-		Path csvPath = Paths.get("C:\\Users\\Napster\\Documents\\Read generator files\\bdt1_feb_2020.csv");
+		Path csvPath = Paths.get("C:\\Users\\Napster\\Documents\\Read generator files\\3634339_rdg_data_feb_20.csv");
 		Scanner scanner = new Scanner(csvPath);
 
 		int currRowIndex = 1;
@@ -80,6 +115,18 @@ public class ReadGenerator {
 		
 		writer.close();
 		outputStream.close();
+	}
+	
+	//Build the connection URL
+	private static String buildConnectionUrl() {
+		String connectionUrl = basePostgresUrl
+				.concat(ConnectionConfig.HOST)
+				.concat(":")
+				.concat(ConnectionConfig.PORT)
+				.concat("/")
+				.concat(ConnectionConfig.DATABASE_NAME);						
+				
+		return connectionUrl;
 	}
 
 	private static HashMap<String, String> prepareMapFromTokens(String[] readTokens) {
