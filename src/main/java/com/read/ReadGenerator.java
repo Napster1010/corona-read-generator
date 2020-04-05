@@ -7,11 +7,13 @@ import java.math.BigDecimal;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Scanner;
+import java.util.StringTokenizer;
 
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.time.DateUtils;
@@ -22,12 +24,10 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.cfg.Configuration;
-import org.hibernate.engine.jdbc.env.internal.JdbcEnvironmentInitiator.ConnectionProviderJdbcConnectionAccess;
 import org.hibernate.query.Query;
 import org.hibernate.service.spi.ServiceException;
-import org.postgresql.util.PSQLException;
 
-import com.config.ConnectionConfig;
+import com.config.CoronaConfig;
 
 public class ReadGenerator {
 	private static final String basePostgresUrl = "jdbc:postgresql://";
@@ -40,9 +40,9 @@ public class ReadGenerator {
 		final Configuration configuration = new Configuration();
 		final String connectionUrl = buildConnectionUrl();						
 		configuration.setProperty("hibernate.connection.url", connectionUrl);
-		configuration.setProperty("hibernate.connection.username", ConnectionConfig.USERNAME);
-		configuration.setProperty("hibernate.connection.password", ConnectionConfig.PASSWORD);
-		configuration.setProperty("hibernate.default_schema", ConnectionConfig.DEFAULT_SCHEMA);
+		configuration.setProperty("hibernate.connection.username", CoronaConfig.USERNAME);
+		configuration.setProperty("hibernate.connection.password", CoronaConfig.PASSWORD);
+		configuration.setProperty("hibernate.default_schema", CoronaConfig.DEFAULT_SCHEMA);
 		
 		System.out.println("Trying to establish a connection with the database...");
 		//Connect to the DB
@@ -52,15 +52,18 @@ public class ReadGenerator {
 		}catch(ServiceException ex) {
 			System.out.println("Couldn't connect to the database! Please check the config parameters");
 			System.exit(0);
+		}catch(Exception ex) {
+			System.out.println("Some unexpected error occurred! Terminating application..");
+			System.exit(0);
 		}
 		System.out.println("Successfully connected to the Database !!");
 		
 		//Open session
 		final Session session = sessionFactory.openSession();
 
-		//Fetch required reading realated information for <CURRENT_MONTH>
-		List<Object[]> result = fetchReadInformation("", session);
-		for(Object[] arr: result) {
+		//Fetch required reading related information for <CURRENT_MONTH>
+		List<String[]> result = fetchCurrentReadInformation(session);
+		for(String[] arr: result) {
 			System.out.println(Arrays.toString(arr));
 		}
 		
@@ -126,42 +129,53 @@ public class ReadGenerator {
 	//Build the connection URL
 	private static String buildConnectionUrl() {
 		String connectionUrl = basePostgresUrl
-				.concat(ConnectionConfig.HOST)
+				.concat(CoronaConfig.HOST)
 				.concat(":")
-				.concat(ConnectionConfig.PORT)
+				.concat(CoronaConfig.PORT)
 				.concat("/")
-				.concat(ConnectionConfig.DATABASE_NAME);						
+				.concat(CoronaConfig.DATABASE_NAME);						
 				
 		return connectionUrl;
 	}
 	
 	//Fetch read information for a bill month
-	private static List<Object[]> fetchReadInformation(String billMonth, Session session) {
+	private static List<String[]> fetchCurrentReadInformation(Session session) {
 		
 		String queryString = "select rm.consumerNo, rm.billMonth, rm.readingDate, rm.readingType, rm.reading"
 				+ ", rmk.meterMD, rmp.meterPF, rm.assessment, (rm.totalConsumption/rm.mf) as totalConsumption"
 				+ ", rm.groupNo, rm.readingDiaryNo"
-				+ "from ReadMaster rm"
-				+ "left join ReadMasterKW rmk on rm.id = rmk.readMasterId"
-				+ "left join ReadMasterPF rmp on rm.id = rmp.readMasterId"
-				+ "where rm.billMonth = 'FEB-2020' and rm.usedOnBill=true and rm.replacementFlag='NR'"
-				+ "and rm.groupNo in ('GJK3')";
+				+ " from ReadMaster rm"
+				+ " left join ReadMasterKW rmk on rm.id = rmk.readMasterId"
+				+ " left join ReadMasterPF rmp on rm.id = rmp.readMasterId"
+				+ " where rm.billMonth = :billMonth and rm.usedOnBill=true and rm.replacementFlag='NR'"
+				+ " and rm.groupNo in (:groups)";
 		
 		Query<Object[]> query = session.createQuery(queryString, Object[].class);
-		List<Object[]> result = query.getResultList();
-		return result;
+		query.setParameter("billMonth", CoronaConfig.CURRENT_BILL_MONTH);
+		query.setParameterList("groups", getGroups());
 		
-//		String s = SELECT RM.CONSUMER_NO,RM.BILL_MONTH,RM.READING_DATE,RM.READING_TYPE,
-//		RM.READING, RMK.METER_MD, RMP.METER_PF,RM.ASSESSMENT,(RM.total_consumption/RM.MF) as total_consumption,
-//		RM.GROUP_NO,RM.READING_DIARY_NO
-//		 FROM NGB.READ_MASTER RM
-//		 LEFT JOIN NGB.READ_MASTER_KW RMK ON RM.ID=RMK.READ_MASTER_ID
-//		 LEFT JOIN NGB.READ_MASTER_PF RMP ON RM.ID=RMP.READ_MASTER_ID
-//		 WHERE RM.BILL_MONTH='FEB-2020'  and RM.used_on_bill=TRUE and RM.replacement_flag='NR'
-//		 and RM.group_no in (select group_no from ngb.groups where location_code='3614807'
-//		 --and group_no in ('GJK3','GJK4','GJK5','GJK6','GJK7','GJK8','GJK9','GJK95')
-//		 and is_deleted=FALSE);"
+		List<Object[]> resultList = query.getResultList();
+		List<String[]> reads = new ArrayList<>();  		
+		for(Object[] read: resultList) {
+			reads.add(Arrays.stream(read)
+					.map(Object::toString)
+					.toArray(String[]::new));
+		}
+		
+		return reads;		
 	}
+	
+	//Return a string which has comma delimited groups
+	private static List<String> getGroups() {
+		StringTokenizer tokenizer = new StringTokenizer(CoronaConfig.GROUP_NOS, ",");
+		List<String> groups = new ArrayList<>();
+		
+		while(tokenizer.hasMoreTokens()) {
+			String group = tokenizer.nextToken().trim();
+			groups.add(group);
+		}
+		return groups;
+	}	
 
 	private static HashMap<String, String> prepareMapFromTokens(String[] readTokens) {
 		HashMap<String, String> readMap = new HashMap<String, String>();
