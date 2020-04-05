@@ -4,15 +4,13 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.PrintWriter;
 import java.math.BigDecimal;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.text.DecimalFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Scanner;
 import java.util.StringTokenizer;
 
 import org.apache.commons.lang.StringUtils;
@@ -62,12 +60,8 @@ public class ReadGenerator {
 		final Session session = sessionFactory.openSession();
 
 		//Fetch required reading related information for <CURRENT_MONTH>
-		List<String[]> result = fetchCurrentReadInformation(session);
-		for(String[] arr: result) {
-			System.out.println(Arrays.toString(arr));
-		}
+		List<String[]> currentReads = fetchCurrentReadInformation(session);
 		
-		System.exit(0);
 		// initialize excel workbook
 		XSSFWorkbook workbook = new XSSFWorkbook();
 		XSSFSheet sheet = workbook.createSheet("data");
@@ -77,28 +71,26 @@ public class ReadGenerator {
 		addColumnHeaders(sheet, columnHeaders);
 
 		// Exception log file
-		File exceptionFile = new File("C:\\\\Users\\\\Napster\\\\Documents\\\\Read generator files\\\\CoronaReadGenerator.txt");
+		File exceptionFile = new File("C:\\Users\\Napster\\Documents\\Read generator files\\CoronaReadGenerator.txt");
 		PrintWriter writer = new PrintWriter(exceptionFile);
 
-		// read the csv file
-		Path csvPath = Paths.get("C:\\Users\\Napster\\Documents\\Read generator files\\3634339_rdg_data_feb_20.csv");
-		Scanner scanner = new Scanner(csvPath);
-
 		int currRowIndex = 1;
-		scanner.nextLine();
 
 		// counters
 		int rowCount = 0, exceptionCount = 0;
-		while (scanner.hasNextLine()) {
+		for(String[] readTokens: currentReads) {
 			++rowCount;
-			String delimitedRead = scanner.nextLine();
-			System.out.println(delimitedRead);
-			final String[] readTokens = delimitedRead.split("\\|");
+			System.out.println(readTokens);
 			System.out.println(Arrays.toString(readTokens));
 			final HashMap<String, String> readMap = prepareMapFromTokens(readTokens);
 
 			Object[] readRow = null;
 			try {
+				//retrieve the tariff information
+				String tariffCategory = getTariffCategory(session, readMap.get("consumerNo"));
+				if(tariffCategory==null)
+					throw new Exception("Couldn't retrieve tariff category for the consumer!");
+				System.out.println(tariffCategory);
 				readRow = prepareReadRow(readMap);
 			} catch (Exception ex) {
 				writer.println("Exception number: " + ++exceptionCount);
@@ -158,7 +150,7 @@ public class ReadGenerator {
 		List<String[]> reads = new ArrayList<>();  		
 		for(Object[] read: resultList) {
 			reads.add(Arrays.stream(read)
-					.map(Object::toString)
+					.map(val -> val==null ? null : val.toString())
 					.toArray(String[]::new));
 		}
 		
@@ -176,6 +168,15 @@ public class ReadGenerator {
 		}
 		return groups;
 	}	
+	
+	//Retrieve tariff category for a consumer
+	private static String getTariffCategory(Session session, String consumerNo) {
+		String queryString = "select tariffCategory from ConsumerConnectionInformation where consumerNo = :consumerNo";
+		Query<String> query = session.createQuery(queryString, String.class);
+		query.setParameter("consumerNo", consumerNo);
+		String tariffCategory = query.uniqueResult();		
+		return tariffCategory;
+	}
 
 	private static HashMap<String, String> prepareMapFromTokens(String[] readTokens) {
 		HashMap<String, String> readMap = new HashMap<String, String>();
@@ -239,7 +240,7 @@ public class ReadGenerator {
 		// reading
 		readRow[3] = Double.parseDouble(getReading(readMap.get("reading"), readType, readMap.get("totalConsumption")));
 		// meter_md
-		readRow[4] = Double.parseDouble(readMap.get("meterMd"));
+		readRow[4] = formatDouble(Double.parseDouble(readMap.get("meterMd")));
 		// kva reading
 		readRow[5] = "0";
 		// kvah reading
@@ -247,11 +248,11 @@ public class ReadGenerator {
 		// lf reading
 		readRow[7] = "0";
 		// meter pf
-		readRow[8] = Double.parseDouble(readMap.get("meterPf"));
+		readRow[8] = formatDouble(Double.parseDouble(readMap.get("meterPf")));
 		// meter reader name
 		readRow[9] = "PMR_MANUAL";
 		// assessment
-		readRow[10] = Double.parseDouble(readMap.get("assessment"));
+		readRow[10] = formatDouble(Double.parseDouble(readMap.get("assessment")));
 		// division
 		readRow[11] = "";
 		// group no
@@ -262,6 +263,11 @@ public class ReadGenerator {
 		readRow[14] = "0";
 
 		return readRow;
+	}
+	
+	//format double to 4 decimal places and return the double
+	private static Double formatDouble(Double val) {
+		return Double.parseDouble(new DecimalFormat("#0.0000").format(val));
 	}
 
 	private static void addReadEntry(XSSFSheet sheet, Object[] readTokens, int rowIndex) {

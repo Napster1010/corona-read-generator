@@ -25,8 +25,10 @@ public class CoronaConfig {
 	public static final String PREVIOUS_BILL_MONTH = "JAN-2020";	
 	//List of groups (Should be comma delimited. ex: GJK3,GJK4,GJK5)
 	public static final String GROUP_NOS = "GJK3,GJK4";
-	//Name of the exception log file
-	public static final String EXCEPTION_FILE_NAME = "CoronaReadGeneratorExceptions";
-	//Name of the output PMR file
-	public static final String OUTPUT_PMR_FILE_NAME = "Test_Output";
+	//Name of the exception log file (Do not forget using double back slash(\\) in the path string)
+	//ex: "C:\\Users\\Napster\\Documents\\Read generator files\\CoronaReadGenerator.txt"
+	public static final String EXCEPTION_FILE_PATH = "C:\\Users\\Napster\\Documents\\Read generator files\\CoronaReadGenerator.txt";
+	//Name of the output PMR file (Do not forget using double back slash(\\) in the path string)
+	//ex: "C:\\Users\\Napster\\Documents\\Read generator files\\Test_Output.xlsx"
+	public static final String OUTPUT_PMR_FILE_PATH = "C:\\Users\\Napster\\Documents\\Read generator files\\Test_Output.xlsx";
 }

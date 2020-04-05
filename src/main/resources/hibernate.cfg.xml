@@ -23,12 +23,13 @@
         <!-- Echo all executed SQL to stdout -->
         <property name="show_sql">false</property>
 
-        <property name="hbm2ddl.auto">update</property>
+        <property name="hbm2ddl.auto">validate</property>
 
         <!-- Names the annotated entity class -->
         <mapping class="com.bean.ReadMaster"/>      
         <mapping class="com.bean.ReadMasterKW"/>      
         <mapping class="com.bean.ReadMasterPF"/>      
+        <mapping class="com.bean.ConsumerConnectionInformation"/>      
 		    
 	</session-factory>
 
