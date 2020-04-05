@@ -222,9 +222,7 @@ public class ReadGenerator {
 		//check if there's a need to prorate reading, assessment for IP
 		if(tariffCategory.equals("LV2") || tariffCategory.equals("LV4")) {
 			Date newReadingDate = excelDateFormat.parse(getNewReadDate(dbDateFormat.format(currentReadingDate)));
-			if(dbDateFormat.parse(lockdownDate).compareTo(newReadingDate) > 0) {
-				System.out.println("Lockdown Date: " + dbDateFormat.parse(lockdownDate));
-				System.out.println("Next month Date: " + newReadingDate);
+			if(dbDateFormat.parse(lockdownDate).compareTo(newReadingDate) < 0) {
 				prorateValues = true;
 			}
 		}
